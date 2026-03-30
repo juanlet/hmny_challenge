@@ -23,14 +23,20 @@ uvicorn app.main:app --reload
 | Method | Path | Description |
 |--------|------|-------------|
 | `GET` | `/ui/` | Web UI for document upload and extraction |
-| `POST` | `/submissions` | Upload a document and extract income data (API) |
+| `POST` | `/submissions` | Upload a document — returns a job ID (202) |
+| `GET` | `/submissions/{job_id}` | Poll extraction job status and result |
 | `GET` | `/health` | Health check |
 
 ### Example: Upload a Document
 
 ```bash
+# Submit a document — returns a job ID
 curl -X POST http://localhost:8000/submissions \
   -F "file=@/path/to/pay_stub.pdf"
+# {"job_id": "a1b2c3d4e5f6", "status": "processing"}
+
+# Poll for the result
+curl http://localhost:8000/submissions/a1b2c3d4e5f6
 ```
 
 ### Response Shape
@@ -113,15 +119,27 @@ All 21 tests use mocked LLM responses — **no API keys required**.
 POST /submissions
      │
      ▼
- document.py ──► magic byte validation ──► BAML Image / Pdf
+ validate format (magic bytes)  →  422 if unsupported
      │
      ▼
- extraction.py ──► b.ExtractIncome(doc) ──► LLM (GPT-4o → Claude → Gemini → Grok)
-     │
-     ▼
- post-validation ──► SubmissionResponse (success / partial / error)
+ create job → return 202 {job_id}
+     │                     ▲
+     ▼ (background)        │  GET /submissions/{job_id}
+ ┌───────────────────────┐ │
+ │  LangGraph Pipeline   │ │
+ │                       │ │
+ │  validate_document    │ │
+ │       ↓               │ │
+ │  extract_via_llm      │ │
+ │  (BAML → LLM)         │ │
+ │       ↓               │ │
+ │  post_validate        │ │
+ └───────────────────────┘ │
+     │                     │
+     ▼                     │
+  store result ────────────┘
 ```
 
-The API validates uploaded files by inspecting magic bytes (never trusting `Content-Type`), converts them to BAML's native `Image` or `Pdf` types, and passes them to an LLM extraction function. BAML handles structured output parsing, type coercion, and provider fallback. A post-validation layer checks for missing required fields and business-rule violations, producing a three-state response: `success`, `partial`, or `error`. Structured JSON logging (via structlog) and a request-scoped `request_id` provide observability.
+The API validates uploaded files by inspecting magic bytes (never trusting `Content-Type`), then immediately returns a job ID. A LangGraph `StateGraph` pipeline runs the extraction in the background through three nodes: document validation, BAML-powered LLM extraction (with a 4-provider fallback chain: GPT-4o → Claude → Gemini → Grok), and post-validation of required fields and business rules. Clients poll `GET /submissions/{job_id}` for results. The web UI at `/ui/` does this polling automatically with a progress indicator.
 
 

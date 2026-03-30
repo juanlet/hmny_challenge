@@ -30,8 +30,17 @@
     .btn.loading .btn-label { display: none; }
     @keyframes spin { to { transform: rotate(360deg); } }
 
+    /* Processing banner */
+    .processing { margin-top: 28px; padding: 18px 20px; border-radius: 12px; background: #eef2ff; border: 1px solid #c7d2fe; display: none; }
+    .processing.active { display: flex; align-items: center; gap: 12px; animation: fadeIn 0.3s ease; }
+    .processing .pulse { width: 10px; height: 10px; background: #6366f1; border-radius: 50%; animation: pulse 1.2s ease-in-out infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+    .processing .label { font-size: 0.88rem; color: #4338ca; font-weight: 500; }
+    .processing .job-id { font-size: 0.75rem; color: #818cf8; font-family: monospace; }
+
     /* Result card */
-    .result { margin-top: 28px; border-radius: 12px; background: #fff; border: 1px solid #e5e7eb; overflow: hidden; animation: fadeIn 0.3s ease; }
+    .result { margin-top: 28px; border-radius: 12px; background: #fff; border: 1px solid #e5e7eb; overflow: hidden; animation: fadeIn 0.3s ease; display: none; }
+    .result.visible { display: block; }
     @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
     .result-header { padding: 14px 20px; font-weight: 600; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.04em; }
     .result-header.success { background: #ecfdf5; color: #065f46; }
@@ -62,7 +71,7 @@
     <h1>Harmony</h1>
     <p class="subtitle">Upload an income document to extract structured data</p>
 
-    <form id="uploadForm" action="/ui/extract" method="post" enctype="multipart/form-data">
+    <form id="uploadForm">
       <div class="upload-area" id="dropZone">
         <input type="file" name="file" id="fileInput" accept=".pdf,.png,.jpg,.jpeg,.webp,.tiff,.tif">
         <div class="upload-icon">📄</div>
@@ -76,54 +85,18 @@
       </button>
     </form>
 
-    {% if result %}
-    <div class="result">
-      <div class="result-header {{ result.status }}">
-        {% if result.status == 'success' %}✅ Extraction Successful
-        {% elif result.status == 'partial' %}⚠️ Partial Extraction
-        {% else %}❌ Extraction Failed{% endif %}
-      </div>
-      <div class="result-body">
-        {% if result.data %}
-        <table class="data-table">
-          <tr><th>Employer</th><td>{{ result.data.employer_name or '<span class="null-val">not found</span>' | safe }}</td></tr>
-          <tr><th>Employee</th><td>{{ result.data.employee_name or '<span class="null-val">not found</span>' | safe }}</td></tr>
-          <tr><th>Gross Income</th><td>{% if result.data.gross_income is not none %}{{ "${:,.2f}".format(result.data.gross_income) }}{% else %}<span class="null-val">not found</span>{% endif %}</td></tr>
-          <tr><th>Net Income</th><td>{% if result.data.net_income is not none %}{{ "${:,.2f}".format(result.data.net_income) }}{% else %}<span class="null-val">not found</span>{% endif %}</td></tr>
-          <tr><th>Pay Frequency</th><td>{{ result.data.pay_frequency or '<span class="null-val">not found</span>' | safe }}</td></tr>
-          {% if result.data.income_period %}
-          <tr><th>Income Period</th><td>{{ result.data.income_period.start_date }} — {{ result.data.income_period.end_date }}</td></tr>
-          {% endif %}
-          <tr><th>Document Type</th><td>{{ result.data.document_type or '<span class="null-val">not found</span>' | safe }}</td></tr>
-          <tr><th>Currency</th><td>{{ result.data.currency or '<span class="null-val">not found</span>' | safe }}</td></tr>
-          {% if result.data.confidence_notes %}
-          <tr><th>Notes</th><td>{{ result.data.confidence_notes | join(', ') }}</td></tr>
-          {% endif %}
-        </table>
-        {% endif %}
-
-        {% if result.errors %}
-        <div class="errors-section">
-          <h3>Issues</h3>
-          {% for err in result.errors %}
-          <div class="error-item">
-            {% if err.field %}<span class="error-field">{{ err.field }}</span>{% endif %}
-            <span class="error-type">{{ err.error_type }}</span>
-            — {{ err.message }}
-          </div>
-          {% endfor %}
-        </div>
-        {% endif %}
-
-        {% if result.metadata %}
-        <div class="meta">
-          {% if result.metadata.get('model_used') %}<span>Model: {{ result.metadata['model_used'] }}</span>{% endif %}
-          {% if result.metadata.get('processing_time_ms') %}<span>Time: {{ result.metadata['processing_time_ms'] }}ms</span>{% endif %}
-        </div>
-        {% endif %}
+    <div class="processing" id="processingBanner">
+      <div class="pulse"></div>
+      <div>
+        <div class="label">Extracting data…</div>
+        <div class="job-id" id="jobIdLabel"></div>
       </div>
     </div>
-    {% endif %}
+
+    <div class="result" id="resultCard">
+      <div class="result-header" id="resultHeader"></div>
+      <div class="result-body" id="resultBody"></div>
+    </div>
   </div>
 
   <script>
@@ -132,6 +105,11 @@
     const fileName = document.getElementById('fileName');
     const submitBtn = document.getElementById('submitBtn');
     const form = document.getElementById('uploadForm');
+    const processingBanner = document.getElementById('processingBanner');
+    const jobIdLabel = document.getElementById('jobIdLabel');
+    const resultCard = document.getElementById('resultCard');
+    const resultHeader = document.getElementById('resultHeader');
+    const resultBody = document.getElementById('resultBody');
 
     fileInput.addEventListener('change', () => {
       if (fileInput.files.length) {
@@ -147,10 +125,127 @@
       fileInput.dispatchEvent(new Event('change'));
     });
 
-    form.addEventListener('submit', () => {
+    form.addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      if (!fileInput.files.length) return;
+
+      // Reset UI
       submitBtn.classList.add('loading');
       submitBtn.disabled = true;
+      resultCard.classList.remove('visible');
+      processingBanner.classList.add('active');
+      jobIdLabel.textContent = '';
+
+      const formData = new FormData();
+      formData.append('file', fileInput.files[0]);
+
+      try {
+        // Submit file → get job ID
+        const submitResp = await fetch('/ui/extract', { method: 'POST', body: formData });
+        if (!submitResp.ok) {
+          const err = await submitResp.json();
+          showError(err.errors ? err.errors[0].message : (err.detail || 'Upload failed'));
+          return;
+        }
+        const { job_id } = await submitResp.json();
+        jobIdLabel.textContent = 'Job ' + job_id;
+
+        // Poll until done
+        await pollJob(job_id);
+      } catch (e) {
+        showError(e.message || 'Network error');
+      } finally {
+        submitBtn.classList.remove('loading');
+        submitBtn.disabled = false;
+        processingBanner.classList.remove('active');
+      }
     });
+
+    async function pollJob(jobId) {
+      const POLL_INTERVAL = 800;
+      const MAX_POLLS = 120; // ~96 seconds max
+      for (let i = 0; i < MAX_POLLS; i++) {
+        await sleep(POLL_INTERVAL);
+        const resp = await fetch('/ui/jobs/' + jobId);
+        if (!resp.ok) { showError('Failed to check job status'); return; }
+        const job = await resp.json();
+        if (job.status === 'completed') { renderResult(job.result); return; }
+        if (job.status === 'failed') { showError(job.error || 'Extraction failed'); return; }
+        // still processing — keep polling
+      }
+      showError('Extraction timed out — please try again');
+    }
+
+    function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+    function renderResult(result) {
+      const status = result.status;
+      resultHeader.className = 'result-header ' + status;
+      if (status === 'success') resultHeader.textContent = '✅ Extraction Successful';
+      else if (status === 'partial') resultHeader.textContent = '⚠️ Partial Extraction';
+      else resultHeader.textContent = '❌ Extraction Failed';
+
+      let html = '';
+
+      // Data table
+      if (result.data) {
+        const d = result.data;
+        html += '<table class="data-table">';
+        html += row('Employer', d.employer_name);
+        html += row('Employee', d.employee_name);
+        html += row('Gross Income', d.gross_income != null ? '$' + Number(d.gross_income).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2}) : null);
+        html += row('Net Income', d.net_income != null ? '$' + Number(d.net_income).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2}) : null);
+        html += row('Pay Frequency', d.pay_frequency);
+        if (d.income_period) html += row('Income Period', d.income_period.start_date + ' — ' + d.income_period.end_date);
+        html += row('Document Type', d.document_type);
+        html += row('Currency', d.currency);
+        if (d.confidence_notes && d.confidence_notes.length) html += row('Notes', d.confidence_notes.join(', '));
+        html += '</table>';
+      }
+
+      // Errors
+      if (result.errors && result.errors.length) {
+        html += '<div class="errors-section"><h3>Issues</h3>';
+        result.errors.forEach(err => {
+          html += '<div class="error-item">';
+          if (err.field) html += '<span class="error-field">' + esc(err.field) + '</span>';
+          html += '<span class="error-type">' + esc(err.error_type) + '</span>';
+          html += ' — ' + esc(err.message);
+          html += '</div>';
+        });
+        html += '</div>';
+      }
+
+      // Metadata
+      if (result.metadata) {
+        const m = result.metadata;
+        html += '<div class="meta">';
+        if (m.model_used) html += '<span>Model: ' + esc(m.model_used) + '</span>';
+        if (m.processing_time_ms != null) html += '<span>Time: ' + m.processing_time_ms + 'ms</span>';
+        html += '</div>';
+      }
+
+      resultBody.innerHTML = html;
+      resultCard.classList.add('visible');
+    }
+
+    function showError(msg) {
+      resultHeader.className = 'result-header error';
+      resultHeader.textContent = '❌ Error';
+      resultBody.innerHTML = '<div class="error-item">' + esc(msg) + '</div>';
+      resultCard.classList.add('visible');
+    }
+
+    function row(label, value) {
+      const display = value != null ? esc(String(value)) : '<span class="null-val">not found</span>';
+      return '<tr><th>' + esc(label) + '</th><td>' + display + '</td></tr>';
+    }
+
+    function esc(s) {
+      const el = document.createElement('span');
+      el.textContent = s;
+      return el.innerHTML;
+    }
   </script>
 </body>
 </html>

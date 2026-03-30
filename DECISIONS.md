@@ -2,13 +2,13 @@
 
 ## Why I Built It This Way
 
-- **BAML over raw OpenAI SDK.** BAML provides native `pdf`/`image` input types, auto-generated Pydantic models from the schema, built-in fallback client strategies, and structured output parsing that handles malformed JSON — all things that would be hand-rolled boilerplate otherwise. The brief explicitly mentioned BAML, so leaning into it demonstrated tool awareness while genuinely simplifying the codebase.
+- **LangGraph for orchestration.** The extraction pipeline is modeled as a LangGraph `StateGraph` with three nodes: `validate_document` → `extract_via_llm` → `post_validate`. This adds real value: the graph makes the pipeline's control flow explicit and extensible. Adding a document-type classifier or a retry-with-clarification step is just a new node and edge — no refactoring of function call chains. The conditional edge after `extract_via_llm` already demonstrates this: if the LLM fails, the graph short-circuits to END without running post-validation.
 
-- **Optional fields in BAML, required validation in Python.** Making every field `?` (optional) in the BAML schema lets the parser return a partial result rather than raising on missing data. This enables per-field error reporting — if `gross_income` is missing but `employer_name` was extracted, the caller gets both the data and the specific failures. If fields were required in BAML, any single missing field collapses the entire extraction into an error.
+- **Async job-based extraction.** `POST /submissions` returns 202 with a `job_id` immediately. Extraction runs in the background via `asyncio.create_task`. Clients poll `GET /submissions/{job_id}` for results. This decouples upload latency from LLM processing time, is the natural pattern for production (swap the in-memory store for Redis/DB), and matches the instructions' bonus criteria for async processing.
 
-- **LangGraph excluded.** For a single synchronous extraction step, a graph framework adds ceremony without benefit. LangGraph becomes worthwhile when the pipeline grows to multi-step: classify document type → extract type-specific fields → verify against an external source. The current design's `extract_from_document()` function is the natural extension point for that.
+- **BAML for structured LLM calls.** BAML provides native `pdf`/`image` input types, auto-generated Pydantic models from the schema, built-in fallback client strategies, and structured output parsing that handles malformed JSON — all things that would be hand-rolled boilerplate otherwise. The brief explicitly mentioned BAML, so leaning into it demonstrated tool awareness while genuinely simplifying the codebase.
 
-- **Adding a second document type (e.g. government ID):** Add a `GovernmentIdExtraction` class and `ExtractGovernmentId` function in `baml_src/`; add a document-type classifier step; route to the appropriate extraction function. The service layer's `extract_from_document` would become a dispatcher. No changes to the API contract — `SubmissionResponse` already supports variable fields via its optional `ExtractionData` shape.
+- **Adding a second document type (e.g. government ID):** Add a `GovernmentIdExtraction` class and `ExtractGovernmentId` function in `baml_src/`; add a `classify_document` node to the LangGraph pipeline that routes to the appropriate extraction node via conditional edges. The service layer's graph already supports this branching — just add nodes and edges. No changes to the API contract — `SubmissionResponse` already supports variable fields via its optional `ExtractionData` shape.
 
 ## Where It's Fragile
 
@@ -22,9 +22,7 @@
 
 ## One Thing I'd Refactor
 
-I'd refactor `extract_from_document()` in `app/services/extraction.py`. It currently handles three responsibilities: format conversion (delegated), LLM invocation, and post-validation. As document types multiply, the validation block grows into a long conditional.
-
-**The fix:** Introduce a `PostValidator` protocol with a `validate(result) -> list[ErrorDetail]` method. Implement `IncomeExtractionValidator` as one concrete class with the required-field and negative-income checks. Inject validators into `extract_from_document`. This separates validation policy from orchestration, makes each validator independently testable, and lets new document types bring their own validation rules without touching the core function.
+The in-memory job store (`app/services/jobs.py`) is the obvious production gap. It uses a plain `dict` — jobs vanish on restart, there's no TTL/cleanup, and it doesn't scale past a single process. The fix: swap the `_jobs` dict for a Redis-backed store (or PostgreSQL) behind the same `create_job`/`get_job` interface. The rest of the codebase wouldn't change.
 
 ## A Judgment Call Under Uncertainty
 
