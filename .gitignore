@@ -35,3 +35,7 @@ htmlcov/
 
 # Uploads (runtime)
 uploads/
+
+# Local planning docs
+plan-donotdelete.md
+tests/sample*/
