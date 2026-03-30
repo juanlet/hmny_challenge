@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     # Model names — override via env vars (e.g. GEMINI_MODEL=gemini-2.5-flash)
     openai_model: str = "gpt-4o"
     anthropic_model: str = "claude-sonnet-4-20250514"
-    gemini_model: str = "gemini-2.0-flash"
+    gemini_model: str = "gemini-2.5-flash"
     xai_model: str = "grok-3"
 
     model_config = {"env_file": ".env", "extra": "ignore"}

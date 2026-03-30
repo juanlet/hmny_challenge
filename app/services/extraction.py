@@ -37,13 +37,21 @@ _PROVIDER_KEY_ENV = {
 _FALLBACK_ORDER = ["openai", "anthropic", "google", "xai"]
 
 
+def _is_real_key(value: str | None) -> bool:
+    """Return True if the value looks like an actual API key, not a placeholder."""
+    if not value:
+        return False
+    lower = value.lower()
+    return not ("your-" in lower or "here" in lower or "replace" in lower or lower.startswith("sk-placeholder"))
+
+
 def _detect_provider() -> str:
-    """Return the configured provider, or pick the first one with a set API key."""
+    """Return the configured provider, or pick the first one with a real API key."""
     configured = settings.llm_primary_provider
     if configured != "auto":
         return configured
     for provider in _FALLBACK_ORDER:
-        if os.environ.get(_PROVIDER_KEY_ENV[provider]):
+        if _is_real_key(os.environ.get(_PROVIDER_KEY_ENV[provider])):
             return provider
     return "openai"
 
