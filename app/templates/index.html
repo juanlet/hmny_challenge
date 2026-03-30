@@ -141,7 +141,7 @@
 
       try {
         // Submit file → get job ID
-        const submitResp = await fetch('/ui/extract', { method: 'POST', body: formData });
+        const submitResp = await fetch('/submissions', { method: 'POST', body: formData });
         if (!submitResp.ok) {
           const err = await submitResp.json();
           showError(err.errors ? err.errors[0].message : (err.detail || 'Upload failed'));
@@ -166,7 +166,7 @@
       const MAX_POLLS = 120; // ~96 seconds max
       for (let i = 0; i < MAX_POLLS; i++) {
         await sleep(POLL_INTERVAL);
-        const resp = await fetch('/ui/jobs/' + jobId);
+        const resp = await fetch('/submissions/' + jobId);
         if (!resp.ok) { showError('Failed to check job status'); return; }
         const job = await resp.json();
         if (job.status === 'completed') { renderResult(job.result); return; }

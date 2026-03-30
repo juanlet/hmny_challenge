@@ -22,7 +22,7 @@ uvicorn app.main:app --reload
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `GET` | `/ui/` | Web UI for document upload and extraction |
+| `GET` | `/` | Web UI for document upload and extraction |
 | `POST` | `/submissions` | Upload a document — returns a job ID (202) |
 | `GET` | `/submissions/{job_id}` | Poll extraction job status and result |
 | `GET` | `/health` | Health check |
@@ -102,7 +102,11 @@ curl http://localhost:8000/submissions/a1b2c3d4e5f6
 | `ANTHROPIC_API_KEY` | — | Anthropic API key |
 | `GOOGLE_API_KEY` | — | Google AI (Gemini) API key |
 | `XAI_API_KEY` | — | xAI (Grok) API key |
-| `LLM_PRIMARY_PROVIDER` | `openai` | Primary LLM provider (`openai`, `anthropic`, `google`, or `xai`). Falls back through the chain on failure. |
+| `LLM_PRIMARY_PROVIDER` | `auto` | Primary LLM provider (`openai`, `anthropic`, `google`, `xai`, or `auto`). `auto` selects the first provider whose API key is set. |
+| `OPENAI_MODEL` | `gpt-4o` | OpenAI model name |
+| `ANTHROPIC_MODEL` | `claude-sonnet-4-20250514` | Anthropic model name |
+| `GEMINI_MODEL` | `gemini-2.5-flash` | Google Gemini model name |
+| `XAI_MODEL` | `grok-3` | xAI Grok model name |
 | `MAX_FILE_SIZE_MB` | `10` | Maximum upload file size in megabytes |
 
 ## Running Tests
@@ -111,7 +115,7 @@ curl http://localhost:8000/submissions/a1b2c3d4e5f6
 pytest -v
 ```
 
-All 21 tests use mocked LLM responses — **no API keys required**.
+All 22 tests use mocked LLM responses — **no API keys required**.
 
 ## Architecture
 
@@ -140,6 +144,6 @@ POST /submissions
   store result ────────────┘
 ```
 
-The API validates uploaded files by inspecting magic bytes (never trusting `Content-Type`), then immediately returns a job ID. A LangGraph `StateGraph` pipeline runs the extraction in the background through three nodes: document validation, BAML-powered LLM extraction (with a 4-provider fallback chain: GPT-4o → Claude → Gemini → Grok), and post-validation of required fields and business rules. Clients poll `GET /submissions/{job_id}` for results. The web UI at `/ui/` does this polling automatically with a progress indicator.
+The API validates uploaded files by inspecting magic bytes (never trusting `Content-Type`), then immediately returns a job ID. A LangGraph `StateGraph` pipeline runs the extraction in the background through three nodes: document validation, BAML-powered LLM extraction (with a 4-provider fallback chain: GPT-4o → Claude → Gemini → Grok), and post-validation of required fields and business rules. Clients poll `GET /submissions/{job_id}` for results. The web UI at `/` does this polling automatically with a progress indicator.
 
 

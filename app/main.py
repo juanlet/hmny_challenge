@@ -43,7 +43,7 @@ class RequestIdMiddleware(BaseHTTPMiddleware):
 
 app.add_middleware(RequestIdMiddleware)
 app.include_router(submissions.router, tags=["submissions"])
-app.include_router(ui.router, prefix="/ui", tags=["ui"])
+app.include_router(ui.router, tags=["ui"])
 
 
 @app.get("/health")

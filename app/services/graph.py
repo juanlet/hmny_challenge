@@ -53,19 +53,22 @@ _FALLBACK_ORDER = ["openai", "anthropic", "google", "xai"]
 # LangGraph state
 # ---------------------------------------------------------------------------
 
-class ExtractionState(TypedDict, total=False):
-    # Inputs
+class _ExtractionBase(TypedDict):
+    # Always present — provided by run_extraction at graph invocation
     content: bytes
     filename: str
-    # After validation
+    start_time: float
+
+
+class ExtractionState(_ExtractionBase, total=False):
+    # Added by validate_document node
     mime_type: str
     baml_input: Union[Image, Pdf]
-    # After LLM extraction
+    # Added by extract_via_llm node
     raw_result: Any
     model_used: str
-    # After post-validation
+    # Added by post_validate (or error short-circuit)
     response: SubmissionResponse
-    start_time: float
 
 
 # ---------------------------------------------------------------------------

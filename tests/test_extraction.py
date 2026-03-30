@@ -21,7 +21,7 @@ def _make_extraction(**overrides) -> IncomeExtraction:
         confidence_notes=[],
     )
     defaults.update(overrides)
-    return IncomeExtraction(**defaults)
+    return IncomeExtraction(**defaults)  # type: ignore[arg-type]
 
 
 @patch(PATCH_TARGET, new_callable=AsyncMock)
@@ -78,4 +78,5 @@ async def test_processing_time_is_populated(mock_extract):
     mock_extract.return_value = _make_extraction()
     resp = await run_extraction(MINIMAL_PNG, "stub.png")
     assert "processing_time_ms" in resp.metadata
-    assert resp.metadata["processing_time_ms"] >= 0
+    processing_time = resp.metadata["processing_time_ms"]
+    assert isinstance(processing_time, (int, float)) and processing_time >= 0
