@@ -26,10 +26,12 @@ The in-memory job store (`app/services/jobs.py`) is the obvious production gap. 
 
 ## A Judgment Call Under Uncertainty
 
-**Returning HTTP 200 for `"partial"` and `"error"` extraction statuses** instead of 422/500.
+**Treating extraction outcomes as business results, not HTTP errors.**
 
-- **Argument for 200:** The API fulfilled its obligation — the document was received and processed. The extraction outcome is a business result, not a protocol failure. Using 200 with a structured body lets callers handle success and failure with the same response-parsing code path. Most document processing APIs follow this pattern.
+The async job flow means `POST /submissions` always returns 202 (accepted), and `GET /submissions/{job_id}` always returns 200 with the job state. The extraction outcome — `"success"`, `"partial"`, or `"error"` — lives inside the job result body, not as an HTTP status code.
 
-- **Argument for 4xx:** `"error"` status arguably represents a processing failure the client indirectly caused (uploading an unreadable document), making 422 semantically appropriate. Some API consumers rely on HTTP status codes for gateway-level routing.
+- **Argument for this approach:** The API fulfilled its obligation — the document was received and processed. The extraction outcome is a business result, not a protocol failure. Callers parse the same response shape regardless of outcome. Most document processing APIs follow this pattern.
 
-- **Decision:** 200 for extraction outcomes, 422 only for `UnsupportedFormatError` (unambiguously a client input error). I'd reconsider if the API were consumed primarily by gateway tooling that routes on status codes.
+- **Argument against:** Some API consumers rely on HTTP status codes for gateway-level routing or alerting. A `"partial"` result could justify a 207 or 422 at the HTTP level.
+
+- **Decision:** HTTP status codes reflect the *transport-level* outcome (202 = accepted, 200 = job found, 404 = unknown job). Extraction outcomes are expressed in the response body. The one exception is `UnsupportedFormatError` — caught *before* job creation, returned as a direct 422. This is unambiguously a client input error, not an extraction outcome.
