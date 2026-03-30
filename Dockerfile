@@ -10,7 +10,7 @@ RUN pip install --no-cache-dir --prefix=/install .
 # Copy BAML source and generate client
 COPY baml_src/ baml_src/
 RUN pip install --no-cache-dir baml-py \
-    && python -m baml_cli generate
+    && baml-cli generate
 
 # --- Runtime stage ---
 FROM python:3.12-slim
