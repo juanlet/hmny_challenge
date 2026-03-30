@@ -1,9 +1,12 @@
 import time
 
+import structlog
+from baml_py import ClientRegistry
 from baml_py.baml_py import BamlError
 
 from baml_client.async_client import b
 
+from app.config import settings
 from app.schemas.responses import (
     ErrorDetail,
     ExtractionData,
@@ -12,7 +15,23 @@ from app.schemas.responses import (
 )
 from app.services.document import validate_and_convert
 
+logger = structlog.get_logger()
+
 REQUIRED_FIELDS = ["employer_name", "gross_income", "pay_frequency"]
+
+_PROVIDER_TO_CLIENT = {
+    "openai": "GPT4o",
+    "anthropic": "AnthropicSonnet",
+}
+
+
+def _build_client_registry() -> ClientRegistry:
+    cr = ClientRegistry()
+    client_name = _PROVIDER_TO_CLIENT.get(
+        settings.llm_primary_provider, "GPT4o"
+    )
+    cr.set_primary(client_name)
+    return cr
 
 
 async def extract_from_document(
@@ -21,14 +40,20 @@ async def extract_from_document(
     """Validate a document, call the LLM via BAML, and return a structured response."""
     start = time.monotonic()
 
+    logger.info("document_received", filename=filename, content_length=len(content))
+
     # Step 1: validate format and convert to BAML input (raises UnsupportedFormatError)
-    _mime_type, baml_input = validate_and_convert(content, filename)
+    mime_type, baml_input = validate_and_convert(content, filename)
+    logger.info("document_validated", mime_type=mime_type)
 
     # Step 2: call BAML extraction
+    cr = _build_client_registry()
+    model_used = _PROVIDER_TO_CLIENT.get(settings.llm_primary_provider, "GPT4o")
     try:
-        result = await b.ExtractIncome(doc=baml_input)
+        result = await b.ExtractIncome(doc=baml_input, baml_options={"client_registry": cr})
     except BamlError as exc:
         elapsed_ms = round((time.monotonic() - start) * 1000)
+        logger.error("extraction_failed", error=str(exc))
         return SubmissionResponse(
             status="error",
             data=None,
@@ -87,10 +112,12 @@ async def extract_from_document(
 
     status = "success" if not errors else "partial"
     elapsed_ms = round((time.monotonic() - start) * 1000)
+    missing = [e.field for e in errors if e.error_type == "missing_field"]
+    logger.info("extraction_complete", status=status, missing_fields=missing)
 
     return SubmissionResponse(
         status=status,
         data=data,
         errors=errors,
-        metadata={"model_used": "gpt-4o", "processing_time_ms": elapsed_ms},
+        metadata={"model_used": model_used, "processing_time_ms": elapsed_ms},
     )

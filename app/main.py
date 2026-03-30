@@ -1,6 +1,10 @@
+import uuid
+
+import structlog
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.api import submissions
 from app.exceptions import (
@@ -9,12 +13,35 @@ from app.exceptions import (
     UnsupportedFormatError,
 )
 
+structlog.configure(
+    processors=[
+        structlog.contextvars.merge_contextvars,
+        structlog.processors.TimeStamper(fmt="iso"),
+        structlog.processors.add_log_level,
+        structlog.processors.JSONRenderer(),
+    ]
+)
+logger = structlog.get_logger()
+
 app = FastAPI(
     title="Harmony Document Extraction API",
     description="Extracts structured income data from uploaded documents using LLM",
     version="0.1.0",
 )
 
+
+class RequestIdMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        request_id = str(uuid.uuid4())
+        structlog.contextvars.bind_contextvars(request_id=request_id)
+        try:
+            response = await call_next(request)
+            return response
+        finally:
+            structlog.contextvars.clear_contextvars()
+
+
+app.add_middleware(RequestIdMiddleware)
 app.include_router(submissions.router, tags=["submissions"])
 
 
@@ -48,6 +75,7 @@ def _error_response(status_code: int, error_type: str, message: str) -> JSONResp
 
 @app.exception_handler(UnsupportedFormatError)
 async def unsupported_format_handler(request: Request, exc: UnsupportedFormatError) -> JSONResponse:
+    logger.warning("unsupported_format", detail=exc.detail)
     return _error_response(422, "unsupported_format", exc.detail)
 
 
@@ -68,4 +96,5 @@ async def validation_error_handler(request: Request, exc: RequestValidationError
 
 @app.exception_handler(Exception)
 async def catch_all_handler(request: Request, exc: Exception) -> JSONResponse:
+    logger.error("unexpected_error", error="An unexpected error occurred")
     return _error_response(500, "extraction_failed", "An unexpected error occurred")
