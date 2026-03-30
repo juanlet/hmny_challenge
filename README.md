@@ -93,7 +93,9 @@ curl -X POST http://localhost:8000/submissions \
 |----------|---------|-------------|
 | `OPENAI_API_KEY` | — | OpenAI API key |
 | `ANTHROPIC_API_KEY` | — | Anthropic API key |
-| `LLM_PRIMARY_PROVIDER` | `openai` | Primary LLM provider (`openai` or `anthropic`). Falls back to the other on failure. |
+| `GOOGLE_API_KEY` | — | Google AI (Gemini) API key |
+| `XAI_API_KEY` | — | xAI (Grok) API key |
+| `LLM_PRIMARY_PROVIDER` | `openai` | Primary LLM provider (`openai`, `anthropic`, `google`, or `xai`). Falls back through the chain on failure. |
 | `MAX_FILE_SIZE_MB` | `10` | Maximum upload file size in megabytes |
 
 ## Running Tests
@@ -113,7 +115,7 @@ POST /submissions
  document.py ──► magic byte validation ──► BAML Image / Pdf
      │
      ▼
- extraction.py ──► b.ExtractIncome(doc) ──► LLM (GPT-4o → Claude fallback)
+ extraction.py ──► b.ExtractIncome(doc) ──► LLM (GPT-4o → Claude → Gemini → Grok)
      │
      ▼
  post-validation ──► SubmissionResponse (success / partial / error)
@@ -121,6 +123,4 @@ POST /submissions
 
 The API validates uploaded files by inspecting magic bytes (never trusting `Content-Type`), converts them to BAML's native `Image` or `Pdf` types, and passes them to an LLM extraction function. BAML handles structured output parsing, type coercion, and provider fallback. A post-validation layer checks for missing required fields and business-rule violations, producing a three-state response: `success`, `partial`, or `error`. Structured JSON logging (via structlog) and a request-scoped `request_id` provide observability.
 
-## AI Tools Used
 
-This project was built with **GitHub Copilot (Claude)** as a pair-programming assistant. Copilot was used for code generation, architecture planning, and researching BAML's API surface. All code was reviewed, tested, and understood before committing — the DECISIONS.md reflects genuine architectural reasoning, not generated boilerplate.

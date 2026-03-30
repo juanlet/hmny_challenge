@@ -1,6 +1,5 @@
 // LLM client configuration for document extraction.
-// Primary: GPT-4o (best multimodal/vision model for document understanding)
-// Fallback: Claude Sonnet 4 (strong alternative with good vision capabilities)
+// Four providers with automatic fallback: GPT-4o → Claude Sonnet → Gemini → Grok
 
 client<llm> GPT4o {
   provider openai
@@ -20,12 +19,31 @@ client<llm> AnthropicSonnet {
   }
 }
 
-// Fallback chain: tries GPT-4o first, falls back to Claude Sonnet on any failure
+client<llm> Gemini {
+  provider google-ai
+  retry_policy Exponential
+  options {
+    model "gemini-2.5-flash"
+    api_key env.GOOGLE_API_KEY
+  }
+}
+
+client<llm> Grok {
+  provider openai-generic
+  retry_policy Exponential
+  options {
+    model "grok-3"
+    base_url "https://api.x.ai/v1"
+    api_key env.XAI_API_KEY
+  }
+}
+
+// Fallback chain: tries each provider in order on any failure
 // (network error, rate limit, invalid response, etc.)
 client<llm> ExtractorWithFallback {
   provider fallback
   options {
-    strategy [GPT4o, AnthropicSonnet]
+    strategy [GPT4o, AnthropicSonnet, Gemini, Grok]
   }
 }
 

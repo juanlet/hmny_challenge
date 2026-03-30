@@ -22,6 +22,8 @@ REQUIRED_FIELDS = ["employer_name", "gross_income", "pay_frequency"]
 _PROVIDER_TO_CLIENT = {
     "openai": "GPT4o",
     "anthropic": "AnthropicSonnet",
+    "google": "Gemini",
+    "xai": "Grok",
 }
 
 
