@@ -6,7 +6,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from app.api import submissions
+from app.api import submissions, ui
 from app.exceptions import (
     DocumentProcessingError,
     ExtractionError,
@@ -43,6 +43,7 @@ class RequestIdMiddleware(BaseHTTPMiddleware):
 
 app.add_middleware(RequestIdMiddleware)
 app.include_router(submissions.router, tags=["submissions"])
+app.include_router(ui.router, prefix="/ui", tags=["ui"])
 
 
 @app.get("/health")

@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Harmony — Document Extraction</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f8f9fb; color: #1a1a2e; min-height: 100vh; }
+    .container { max-width: 680px; margin: 0 auto; padding: 48px 20px; }
+    h1 { font-size: 1.5rem; font-weight: 600; margin-bottom: 4px; }
+    .subtitle { color: #6b7280; font-size: 0.9rem; margin-bottom: 32px; }
+
+    /* Upload area */
+    .upload-area { border: 2px dashed #d1d5db; border-radius: 12px; padding: 40px 24px; text-align: center; background: #fff; transition: border-color 0.2s, background 0.2s; cursor: pointer; position: relative; }
+    .upload-area:hover, .upload-area.dragover { border-color: #6366f1; background: #f5f3ff; }
+    .upload-area input[type="file"] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+    .upload-icon { font-size: 2rem; margin-bottom: 8px; }
+    .upload-text { font-size: 0.95rem; color: #6b7280; }
+    .upload-text strong { color: #6366f1; }
+    .file-name { margin-top: 8px; font-size: 0.85rem; color: #111827; font-weight: 500; }
+    .formats { font-size: 0.75rem; color: #9ca3af; margin-top: 6px; }
+
+    /* Button */
+    .btn { display: inline-flex; align-items: center; gap: 6px; margin-top: 20px; padding: 10px 28px; font-size: 0.9rem; font-weight: 500; color: #fff; background: #6366f1; border: none; border-radius: 8px; cursor: pointer; transition: background 0.2s; }
+    .btn:hover { background: #4f46e5; }
+    .btn:disabled { background: #a5b4fc; cursor: not-allowed; }
+    .spinner { display: none; width: 16px; height: 16px; border: 2px solid #fff; border-top-color: transparent; border-radius: 50%; animation: spin 0.6s linear infinite; }
+    .btn.loading .spinner { display: inline-block; }
+    .btn.loading .btn-label { display: none; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Result card */
+    .result { margin-top: 28px; border-radius: 12px; background: #fff; border: 1px solid #e5e7eb; overflow: hidden; animation: fadeIn 0.3s ease; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+    .result-header { padding: 14px 20px; font-weight: 600; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.04em; }
+    .result-header.success { background: #ecfdf5; color: #065f46; }
+    .result-header.partial { background: #fffbeb; color: #92400e; }
+    .result-header.error   { background: #fef2f2; color: #991b1b; }
+    .result-body { padding: 16px 20px; }
+
+    /* Data table */
+    .data-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+    .data-table th { text-align: left; padding: 6px 0; color: #6b7280; font-weight: 500; width: 40%; }
+    .data-table td { padding: 6px 0; color: #111827; }
+    .data-table tr + tr { border-top: 1px solid #f3f4f6; }
+    .null-val { color: #d1d5db; font-style: italic; }
+
+    /* Errors list */
+    .errors-section { margin-top: 12px; }
+    .errors-section h3 { font-size: 0.8rem; font-weight: 600; color: #991b1b; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.03em; }
+    .error-item { font-size: 0.83rem; padding: 8px 12px; background: #fef2f2; border-radius: 6px; margin-bottom: 4px; color: #7f1d1d; }
+    .error-item .error-field { font-weight: 600; }
+    .error-item .error-type { color: #991b1b; font-size: 0.75rem; background: #fee2e2; padding: 1px 6px; border-radius: 4px; margin-left: 6px; }
+
+    /* Metadata */
+    .meta { margin-top: 12px; font-size: 0.75rem; color: #9ca3af; display: flex; gap: 16px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Harmony</h1>
+    <p class="subtitle">Upload an income document to extract structured data</p>
+
+    <form id="uploadForm" action="/ui/extract" method="post" enctype="multipart/form-data">
+      <div class="upload-area" id="dropZone">
+        <input type="file" name="file" id="fileInput" accept=".pdf,.png,.jpg,.jpeg,.webp,.tiff,.tif">
+        <div class="upload-icon">📄</div>
+        <p class="upload-text">Drop a file here or <strong>browse</strong></p>
+        <p class="formats">PDF, PNG, JPEG, WEBP, TIFF — max {{ max_size_mb }} MB</p>
+        <p class="file-name" id="fileName"></p>
+      </div>
+      <button type="submit" class="btn" id="submitBtn" disabled>
+        <span class="btn-label">Extract Data</span>
+        <span class="spinner"></span>
+      </button>
+    </form>
+
+    {% if result %}
+    <div class="result">
+      <div class="result-header {{ result.status }}">
+        {% if result.status == 'success' %}✅ Extraction Successful
+        {% elif result.status == 'partial' %}⚠️ Partial Extraction
+        {% else %}❌ Extraction Failed{% endif %}
+      </div>
+      <div class="result-body">
+        {% if result.data %}
+        <table class="data-table">
+          <tr><th>Employer</th><td>{{ result.data.employer_name or '<span class="null-val">not found</span>' | safe }}</td></tr>
+          <tr><th>Employee</th><td>{{ result.data.employee_name or '<span class="null-val">not found</span>' | safe }}</td></tr>
+          <tr><th>Gross Income</th><td>{% if result.data.gross_income is not none %}{{ "${:,.2f}".format(result.data.gross_income) }}{% else %}<span class="null-val">not found</span>{% endif %}</td></tr>
+          <tr><th>Net Income</th><td>{% if result.data.net_income is not none %}{{ "${:,.2f}".format(result.data.net_income) }}{% else %}<span class="null-val">not found</span>{% endif %}</td></tr>
+          <tr><th>Pay Frequency</th><td>{{ result.data.pay_frequency or '<span class="null-val">not found</span>' | safe }}</td></tr>
+          {% if result.data.income_period %}
+          <tr><th>Income Period</th><td>{{ result.data.income_period.start_date }} — {{ result.data.income_period.end_date }}</td></tr>
+          {% endif %}
+          <tr><th>Document Type</th><td>{{ result.data.document_type or '<span class="null-val">not found</span>' | safe }}</td></tr>
+          <tr><th>Currency</th><td>{{ result.data.currency or '<span class="null-val">not found</span>' | safe }}</td></tr>
+          {% if result.data.confidence_notes %}
+          <tr><th>Notes</th><td>{{ result.data.confidence_notes | join(', ') }}</td></tr>
+          {% endif %}
+        </table>
+        {% endif %}
+
+        {% if result.errors %}
+        <div class="errors-section">
+          <h3>Issues</h3>
+          {% for err in result.errors %}
+          <div class="error-item">
+            {% if err.field %}<span class="error-field">{{ err.field }}</span>{% endif %}
+            <span class="error-type">{{ err.error_type }}</span>
+            — {{ err.message }}
+          </div>
+          {% endfor %}
+        </div>
+        {% endif %}
+
+        {% if result.metadata %}
+        <div class="meta">
+          {% if result.metadata.get('model_used') %}<span>Model: {{ result.metadata['model_used'] }}</span>{% endif %}
+          {% if result.metadata.get('processing_time_ms') %}<span>Time: {{ result.metadata['processing_time_ms'] }}ms</span>{% endif %}
+        </div>
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+  <script>
+    const dropZone = document.getElementById('dropZone');
+    const fileInput = document.getElementById('fileInput');
+    const fileName = document.getElementById('fileName');
+    const submitBtn = document.getElementById('submitBtn');
+    const form = document.getElementById('uploadForm');
+
+    fileInput.addEventListener('change', () => {
+      if (fileInput.files.length) {
+        fileName.textContent = fileInput.files[0].name;
+        submitBtn.disabled = false;
+      }
+    });
+
+    ['dragenter', 'dragover'].forEach(e => dropZone.addEventListener(e, ev => { ev.preventDefault(); dropZone.classList.add('dragover'); }));
+    ['dragleave', 'drop'].forEach(e => dropZone.addEventListener(e, ev => { ev.preventDefault(); dropZone.classList.remove('dragover'); }));
+    dropZone.addEventListener('drop', ev => {
+      fileInput.files = ev.dataTransfer.files;
+      fileInput.dispatchEvent(new Event('change'));
+    });
+
+    form.addEventListener('submit', () => {
+      submitBtn.classList.add('loading');
+      submitBtn.disabled = true;
+    });
+  </script>
+</body>
+</html>

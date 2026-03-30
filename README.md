@@ -22,7 +22,8 @@ uvicorn app.main:app --reload
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `POST` | `/submissions` | Upload a document and extract income data |
+| `GET` | `/ui/` | Web UI for document upload and extraction |
+| `POST` | `/submissions` | Upload a document and extract income data (API) |
 | `GET` | `/health` | Health check |
 
 ### Example: Upload a Document
