@@ -1,3 +1,4 @@
+import os
 import time
 
 import structlog
@@ -26,14 +27,51 @@ _PROVIDER_TO_CLIENT = {
     "xai": "Grok",
 }
 
+_PROVIDER_KEY_ENV = {
+    "openai": "OPENAI_API_KEY",
+    "anthropic": "ANTHROPIC_API_KEY",
+    "google": "GOOGLE_API_KEY",
+    "xai": "XAI_API_KEY",
+}
 
-def _build_client_registry() -> ClientRegistry:
+_FALLBACK_ORDER = ["openai", "anthropic", "google", "xai"]
+
+
+def _detect_provider() -> str:
+    """Return the configured provider, or pick the first one with a set API key."""
+    configured = settings.llm_primary_provider
+    if configured != "auto":
+        return configured
+    for provider in _FALLBACK_ORDER:
+        if os.environ.get(_PROVIDER_KEY_ENV[provider]):
+            return provider
+    return "openai"
+
+
+def _build_client_registry() -> tuple[ClientRegistry, str]:
+    """Build a ClientRegistry with runtime model names and API keys from config."""
+    provider = _detect_provider()
     cr = ClientRegistry()
-    client_name = _PROVIDER_TO_CLIENT.get(
-        settings.llm_primary_provider, "GPT4o"
-    )
+    cr.add_llm_client("GPT4o", "openai", {
+        "model": settings.openai_model,
+        "api_key": os.environ.get("OPENAI_API_KEY", ""),
+    })
+    cr.add_llm_client("AnthropicSonnet", "anthropic", {
+        "model": settings.anthropic_model,
+        "api_key": os.environ.get("ANTHROPIC_API_KEY", ""),
+    })
+    cr.add_llm_client("Gemini", "google-ai", {
+        "model": settings.gemini_model,
+        "api_key": os.environ.get("GOOGLE_API_KEY", ""),
+    })
+    cr.add_llm_client("Grok", "openai-generic", {
+        "model": settings.xai_model,
+        "base_url": "https://api.x.ai/v1",
+        "api_key": os.environ.get("XAI_API_KEY", ""),
+    })
+    client_name = _PROVIDER_TO_CLIENT[provider]
     cr.set_primary(client_name)
-    return cr
+    return cr, client_name
 
 
 async def extract_from_document(
@@ -49,8 +87,7 @@ async def extract_from_document(
     logger.info("document_validated", mime_type=mime_type)
 
     # Step 2: call BAML extraction
-    cr = _build_client_registry()
-    model_used = _PROVIDER_TO_CLIENT.get(settings.llm_primary_provider, "GPT4o")
+    cr, model_used = _build_client_registry()
     try:
         result = await b.ExtractIncome(doc=baml_input, baml_options={"client_registry": cr})
     except BamlError as exc:
