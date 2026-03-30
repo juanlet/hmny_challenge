@@ -1,5 +1,7 @@
 # BAML Schema & Extraction Function
 
+> **Status: COMPLETE** ✅
+
 ## Overview
 
 Define all BAML types and the core LLM extraction function using BAML's domain-specific language. BAML compiles to a `baml_client/` Python package that provides fully type-safe, auto-parsed calls to the LLM — no manual JSON schema wrangling, no regex parsing of LLM output. This phase establishes both the output schema the LLM must conform to and the prompt that guides its extraction behavior.

@@ -1,5 +1,7 @@
 # Document Handling & Validation
 
+> **Status: COMPLETE** ✅
+
 ## Overview
 
 Implement secure file validation and conversion before any LLM call is made. This layer is the first line of defense: it rejects unsupported file types, enforces size limits, and converts raw upload bytes into the typed inputs BAML requires. Validating on magic bytes (not filename extension) prevents trivially bypassing the check by renaming a `.txt` to `.pdf`.
