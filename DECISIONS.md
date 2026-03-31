@@ -10,6 +10,55 @@
 
 - **Adding a second document type (e.g. government ID):** Add a `GovernmentIdExtraction` class and `ExtractGovernmentId` function in `baml_src/`; add a `classify_document` node to the LangGraph pipeline that routes to the appropriate extraction node via conditional edges. The service layer's graph already supports this branching — just add nodes and edges. No changes to the API contract — `SubmissionResponse` already supports variable fields via its optional `ExtractionData` shape.
 
+Example process: 
+1. Add a Classification Node
+Insert a classify_document node after validate_document but before branching to extraction
+
+The classification node would call the LLM with something lightweight
+
+Then a conditional edge routes to the right extraction path
+
+2. Define Both Extraction Functions in BAML
+You'd add to extraction.baml:
+
+And keep the existing ExtractIncome function.
+
+3. Add Two Extraction Nodes to the Graph
+Instead of a single extract_via_llm node, branch into type-specific nodes:
+
+4. Unify the Response
+The clever part: your SubmissionResponse already supports this. You have an optional ExtractionData shape that holds income fields. For IDs, you could either:
+
+5. Use a union discriminator:
+
+The Decision Logic
+How does the system decide which one to extract?
+
+First call: ClassifyDocumentType — a lightweight LLM call that just returns "income" or "government_id" (could even be 0-shot or few-shot since it's just binary classification).
+
+Route on that label: The conditional edge in LangGraph branches based on the result.
+
+Extract from the specific type: Each node calls its corresponding BAML function with a prompt tailored to that document type.
+
+The nice part: LangGraph's conditional edges and state machine handle the branching cleanly. It's not nesting if-else in function logic—it's declaratively in the graph topology. Adding a third document type (e.g., tax return) is just one more node, one more conditional case, and one more BAML function. No refactoring.
+
+```
+from typing import Union, Literal
+
+class IncomeData(BaseModel):
+    document_type: Literal["income"] = "income"
+    employer_name: str | None = None
+    # ...
+
+class IdData(BaseModel):
+    document_type: Literal["government_id"] = "government_id"
+    full_name: str | None = None
+    # ...
+
+class ExtractionData(BaseModel):
+    data: Union[IncomeData, IdData]
+```
+
 ## Where It's Fragile
 
 - **Single-pass extraction with no retry on partial results.** If the LLM returns partial output, the API returns `"partial"` without retrying with a clarifying prompt. In production, a retry with "field X was missing — please look more carefully at the document" would improve recall.
