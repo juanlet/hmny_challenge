@@ -1,5 +1,7 @@
 # Harmony Document Extraction API
 
+Demo Loom video: https://www.loom.com/share/9ada1008e7e8404ba36e5eeadb27ad1b
+
 A backend service that accepts uploaded income documents, uses an LLM to extract structured data, and returns clean, validated output with actionable error reporting.
 
 ## Quick Start
