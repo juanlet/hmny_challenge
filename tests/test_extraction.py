@@ -1,11 +1,12 @@
 from unittest.mock import AsyncMock, patch
 
-from baml_client.types import IncomeExtraction, IncomePeriod, PayFrequency
+from baml_client.types import DocumentType, IncomeExtraction, IncomePeriod, PayFrequency
 from baml_py.baml_py import BamlClientError
 
 from tests.conftest import MINIMAL_PNG
 
 PATCH_TARGET = "app.services.graph.b.ExtractIncome"
+CLASSIFY_TARGET = "app.services.graph.b.ClassifyDocument"
 
 
 def _make_extraction(**overrides) -> IncomeExtraction:
@@ -25,9 +26,11 @@ def _make_extraction(**overrides) -> IncomeExtraction:
 
 
 @patch(PATCH_TARGET, new_callable=AsyncMock)
-async def test_returns_success_when_all_fields_present(mock_extract):
+@patch(CLASSIFY_TARGET, new_callable=AsyncMock)
+async def test_returns_success_when_all_fields_present(mock_classify, mock_extract):
     from app.services.graph import run_extraction
 
+    mock_classify.return_value = DocumentType.Income
     mock_extract.return_value = _make_extraction()
     resp = await run_extraction(MINIMAL_PNG, "stub.png")
     assert resp.status == "success"
@@ -37,9 +40,11 @@ async def test_returns_success_when_all_fields_present(mock_extract):
 
 
 @patch(PATCH_TARGET, new_callable=AsyncMock)
-async def test_returns_partial_when_pay_frequency_missing(mock_extract):
+@patch(CLASSIFY_TARGET, new_callable=AsyncMock)
+async def test_returns_partial_when_pay_frequency_missing(mock_classify, mock_extract):
     from app.services.graph import run_extraction
 
+    mock_classify.return_value = DocumentType.Income
     mock_extract.return_value = _make_extraction(pay_frequency=None)
     resp = await run_extraction(MINIMAL_PNG, "stub.png")
     assert resp.status == "partial"
@@ -49,9 +54,11 @@ async def test_returns_partial_when_pay_frequency_missing(mock_extract):
 
 
 @patch(PATCH_TARGET, new_callable=AsyncMock)
-async def test_returns_error_on_baml_exception(mock_extract):
+@patch(CLASSIFY_TARGET, new_callable=AsyncMock)
+async def test_returns_error_on_baml_exception(mock_classify, mock_extract):
     from app.services.graph import run_extraction
 
+    mock_classify.return_value = DocumentType.Income
     mock_extract.side_effect = BamlClientError("fail")
     resp = await run_extraction(MINIMAL_PNG, "stub.png")
     assert resp.status == "error"
@@ -60,9 +67,11 @@ async def test_returns_error_on_baml_exception(mock_extract):
 
 
 @patch(PATCH_TARGET, new_callable=AsyncMock)
-async def test_negative_gross_income_is_validation_error(mock_extract):
+@patch(CLASSIFY_TARGET, new_callable=AsyncMock)
+async def test_negative_gross_income_is_validation_error(mock_classify, mock_extract):
     from app.services.graph import run_extraction
 
+    mock_classify.return_value = DocumentType.Income
     mock_extract.return_value = _make_extraction(gross_income=-100.0)
     resp = await run_extraction(MINIMAL_PNG, "stub.png")
     assert resp.status == "partial"
@@ -72,9 +81,11 @@ async def test_negative_gross_income_is_validation_error(mock_extract):
 
 
 @patch(PATCH_TARGET, new_callable=AsyncMock)
-async def test_processing_time_is_populated(mock_extract):
+@patch(CLASSIFY_TARGET, new_callable=AsyncMock)
+async def test_processing_time_is_populated(mock_classify, mock_extract):
     from app.services.graph import run_extraction
 
+    mock_classify.return_value = DocumentType.Income
     mock_extract.return_value = _make_extraction()
     resp = await run_extraction(MINIMAL_PNG, "stub.png")
     assert "processing_time_ms" in resp.metadata

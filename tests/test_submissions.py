@@ -2,11 +2,13 @@ import asyncio
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from baml_client.types import DocumentType
 from baml_py.baml_py import BamlClientError
 
 from tests.conftest import MINIMAL_PDF, MINIMAL_PNG
 
 PATCH_TARGET = "app.services.graph.b.ExtractIncome"
+CLASSIFY_TARGET = "app.services.graph.b.ClassifyDocument"
 
 
 async def _poll_until_done(client, job_id: str, max_polls: int = 30):
@@ -22,7 +24,9 @@ async def _poll_until_done(client, job_id: str, max_polls: int = 30):
 
 
 @patch(PATCH_TARGET, new_callable=AsyncMock)
-async def test_happy_path_image(mock_extract, client, mock_baml_success, minimal_png_bytes):
+@patch(CLASSIFY_TARGET, new_callable=AsyncMock)
+async def test_happy_path_image(mock_classify, mock_extract, client, mock_baml_success, minimal_png_bytes):
+    mock_classify.return_value = DocumentType.Income
     mock_extract.return_value = mock_baml_success
     resp = await client.post(
         "/submissions",
@@ -41,7 +45,9 @@ async def test_happy_path_image(mock_extract, client, mock_baml_success, minimal
 
 
 @patch(PATCH_TARGET, new_callable=AsyncMock)
-async def test_happy_path_pdf(mock_extract, client, mock_baml_success, minimal_pdf_bytes):
+@patch(CLASSIFY_TARGET, new_callable=AsyncMock)
+async def test_happy_path_pdf(mock_classify, mock_extract, client, mock_baml_success, minimal_pdf_bytes):
+    mock_classify.return_value = DocumentType.Income
     mock_extract.return_value = mock_baml_success
     resp = await client.post(
         "/submissions",
@@ -53,7 +59,9 @@ async def test_happy_path_pdf(mock_extract, client, mock_baml_success, minimal_p
 
 
 @patch(PATCH_TARGET, new_callable=AsyncMock)
-async def test_missing_required_fields(mock_extract, client, mock_baml_missing_fields, minimal_png_bytes):
+@patch(CLASSIFY_TARGET, new_callable=AsyncMock)
+async def test_missing_required_fields(mock_classify, mock_extract, client, mock_baml_missing_fields, minimal_png_bytes):
+    mock_classify.return_value = DocumentType.Income
     mock_extract.return_value = mock_baml_missing_fields
     resp = await client.post(
         "/submissions",
@@ -70,7 +78,9 @@ async def test_missing_required_fields(mock_extract, client, mock_baml_missing_f
 
 
 @patch(PATCH_TARGET, new_callable=AsyncMock)
-async def test_baml_parse_error(mock_extract, client, minimal_png_bytes):
+@patch(CLASSIFY_TARGET, new_callable=AsyncMock)
+async def test_baml_parse_error(mock_classify, mock_extract, client, minimal_png_bytes):
+    mock_classify.return_value = DocumentType.Income
     mock_extract.side_effect = BamlClientError("LLM returned unparseable output")
     resp = await client.post(
         "/submissions",

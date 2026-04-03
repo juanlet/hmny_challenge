@@ -187,18 +187,62 @@
 
       let html = '';
 
-      // Data table
+      // Data table — render fields based on extraction_type
       if (result.data) {
         const d = result.data;
+        const type = d.extraction_type || 'income';
+
         html += '<table class="data-table">';
-        html += row('Employer', d.employer_name);
-        html += row('Employee', d.employee_name);
-        html += row('Gross Income', d.gross_income != null ? '$' + Number(d.gross_income).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2}) : null);
-        html += row('Net Income', d.net_income != null ? '$' + Number(d.net_income).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2}) : null);
-        html += row('Pay Frequency', d.pay_frequency);
-        if (d.income_period) html += row('Income Period', d.income_period.start_date + ' — ' + d.income_period.end_date);
-        html += row('Document Type', d.document_type);
-        html += row('Currency', d.currency);
+
+        if (type === 'w2_earnings') {
+          html += row('Employer', d.employer_name);
+          html += row('Employer EIN', d.employer_ein);
+          html += row('Employer Address', d.employer_address);
+          html += row('Employee', d.employee_name);
+          html += row('Employee SSN', d.employee_ssn);
+          html += row('Employee ID', d.employee_id);
+          html += row('Department', d.department);
+          html += row('Wages/Tips/Comp', fmtMoney(d.wages_tips_compensation));
+          html += row('Social Security Wages', fmtMoney(d.social_security_wages));
+          html += row('Medicare Wages', fmtMoney(d.medicare_wages));
+          if (d.tax_withholding) {
+            const tw = d.tax_withholding;
+            html += row('Federal Income Tax', fmtMoney(tw.federal_income_tax));
+            html += row('Social Security Tax', fmtMoney(tw.social_security_tax));
+            html += row('Medicare Tax', fmtMoney(tw.medicare_tax));
+            html += row('State Income Tax', fmtMoney(tw.state_income_tax));
+          }
+          html += row('Gross Pay', fmtMoney(d.gross_pay));
+          html += row('Net Pay', fmtMoney(d.net_pay));
+          html += row('Pay Frequency', d.pay_frequency);
+          if (d.pay_period) html += row('Pay Period', d.pay_period.start_date + ' — ' + d.pay_period.end_date);
+          html += row('Pay Date', d.pay_date);
+          if (d.earnings && d.earnings.length) {
+            html += row('Earnings', d.earnings.map(e => esc(e.description || '?') + ': ' + fmtMoney(e.current_amount)).join('<br>'));
+          }
+          if (d.deductions && d.deductions.length) {
+            html += row('Deductions', d.deductions.map(dd => esc(dd.description || '?') + ': ' + fmtMoney(dd.current_amount)).join('<br>'));
+          }
+          if (d.box_12_codes && d.box_12_codes.length) html += row('Box 12 Codes', d.box_12_codes.join(', '));
+          html += row('Retirement Plan', d.retirement_plan != null ? (d.retirement_plan ? 'Yes' : 'No') : null);
+          html += row('State', d.state);
+          html += row('State Wages', fmtMoney(d.state_wages));
+          html += row('State Tax', fmtMoney(d.state_tax));
+          html += row('Tax Year', d.tax_year);
+          html += row('Document Type', d.document_type);
+          html += row('Currency', d.currency);
+        } else {
+          // Default: income extraction
+          html += row('Employer', d.employer_name);
+          html += row('Employee', d.employee_name);
+          html += row('Gross Income', fmtMoney(d.gross_income));
+          html += row('Net Income', fmtMoney(d.net_income));
+          html += row('Pay Frequency', d.pay_frequency);
+          if (d.income_period) html += row('Income Period', d.income_period.start_date + ' — ' + d.income_period.end_date);
+          html += row('Document Type', d.document_type);
+          html += row('Currency', d.currency);
+        }
+
         if (d.confidence_notes && d.confidence_notes.length) html += row('Notes', d.confidence_notes.join(', '));
         html += '</table>';
       }
@@ -234,6 +278,10 @@
       resultHeader.textContent = '❌ Error';
       resultBody.innerHTML = '<div class="error-item">' + esc(msg) + '</div>';
       resultCard.classList.add('visible');
+    }
+
+    function fmtMoney(v) {
+      return v != null ? '$' + Number(v).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2}) : null;
     }
 
     function row(label, value) {
